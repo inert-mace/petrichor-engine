@@ -15,11 +15,11 @@ int Engine::init()
 
     // initialize window
     Window *window = new Window();
-    window->init();
+    window->init(1280, 720);
 
     // initialize renderer
     Renderer *renderer = new Renderer();
-    renderer->init();
+    renderer->init(*window);
 
     return 0;
 }

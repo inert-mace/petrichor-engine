@@ -8,11 +8,7 @@ int main()
 {
     std::cout << "Hello world!" << std::endl;
 
-    if(!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress))
-    {
-        std::cerr << "Failed to initialize GLAD" << std::endl;
-        return -1;
-    }
+    
     
     return 0;
 }
