@@ -1,8 +1,8 @@
 # used to enforce a minimum version to build this project
-cmake_minimum_required(VERSION 3.2.0)
+cmake_minimum_required(VERSION 4.1.0)
 
 # naming the project + other mumbo jumbo like the version, language(s) used (c++)
-project(PetrichorEngine VERSION 0.1.0 LANGUAGES CXX)
+project(PetrichorEngine VERSION 0.1.0 LANGUAGES C CXX)
 
 # set function sets a variable to a value; in this case it's the c++ standard that I want to target, c++ 17
 # it's also setting the standard to be required
@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # adding subdirectories which create their own cmakelists.txt files, which build the libraries I want to link to my project
 add_subdirectory(external/SDL3 EXCLUDE_FROM_ALL)
 add_subdirectory(external/SDL3_image EXCLUDE_FROM_ALL)
-add_subdirectory(external/SDL3_ttf EXCLUDE_FROM_ALL)
+# add_subdirectory(external/SDL3_ttf EXCLUDE_FROM_ALL)
 add_subdirectory(external/EnTT EXCLUDE_FROM_ALL)
 add_subdirectory(external/nlohmann_json EXCLUDE_FROM_ALL)
 add_subdirectory(external/glm EXCLUDE_FROM_ALL)
@@ -59,7 +59,7 @@ target_include_directories(PetrichorEngine PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_link_libraries(PetrichorEngine PRIVATE 
     SDL3::SDL3 
     SDL3_image::SDL3_image
-    SDL3_ttf::SDL3_ttf
+    # SDL3_ttf::SDL3_ttf
     nlohmann_json::nlohmann_json
     glm::glm
     EnTT::EnTT
