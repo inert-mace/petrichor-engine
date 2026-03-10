@@ -1,14 +1,23 @@
 #include <iostream>
-#include "SDL3/SDL.h"
-#include "SDL3_image/SDL_image.h"
-// #include "SDL3_ttf/SDL_ttf.h"
-#include "glad/glad.h"
+#include "4XTest/BattleUnitTest.h"
+#include "Engine.h"
 
 int main()
 {
     std::cout << "Hello world!" << std::endl;
 
-    
+    BattleUnitTest test;
+    test.testBattle1();
+    std::cout << "Enter any button to continue..." << std::endl;
+    std::cin.get();
+
+    test.testBattle2();
+    std::cout << "Testing complete, running engine" << std::endl;
+    std::cin.get(); // wait for user input before closing the console window
+
+    Engine engine;
+    engine.run();
+    SDL_Quit();
     
     return 0;
 }

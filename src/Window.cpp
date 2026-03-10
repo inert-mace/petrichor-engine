@@ -10,6 +10,14 @@ Window::Window()
 Window::~Window()
 {
     std::cout << "Window destructor called" << std::endl;
+    if(glContext) {
+        SDL_GL_DestroyContext(glContext);
+        glContext = nullptr;
+    }
+    if(_window) {
+    SDL_DestroyWindow(_window);
+    }
+    _window = nullptr;
 }
 
 int Window::init(int width, int height)
@@ -17,7 +25,7 @@ int Window::init(int width, int height)
     std::cout << "Window init called" << std::endl;
 
     SDL_Window* window = nullptr;
-    SDL_GLContext glContext = nullptr;
+    glContext = nullptr;
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
@@ -43,5 +51,8 @@ int Window::init(int width, int height)
         return -1;
     }
 
+        _window = window;
+        _width = width;
+        _height = height;
     return 0;
 }

@@ -1,4 +1,6 @@
 #pragma once
+#include "Window.h"
+#include "Renderer.h"
 
 class Engine
 {
@@ -8,5 +10,8 @@ public:
 
     int init();
     void run();
-    void clean();
+
+    private:
+        Window window;
+        Renderer renderer;
 };

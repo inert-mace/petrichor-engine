@@ -3,16 +3,6 @@
 #include <variant>
 #include <vector>
 
-struct BattleStep {
-    std::vector<BattleEvent> events;
-};
-
-struct BattleLog
-{
-    std::vector<BattleStep> steps;
-    BattleResult result;
-};
-
 struct TurnStartedEvent
 {
     int turnNumber;
@@ -20,9 +10,11 @@ struct TurnStartedEvent
 
 struct AttackDeclaredEvent
 {
+    std::string attackingUnitName;
+    std::string targetUnitName;
     int attackerArmy;     // 0 or 1
     int attackerSlot;     // usually 0 for frontline
-    int targetArmy;
+    int targetArmy;       // 0 or 1, (usually) opposite of attackerArmy
     int targetSlot;       // usually 0 for frontline
     int attackValue;
     bool ranged;
@@ -30,6 +22,7 @@ struct AttackDeclaredEvent
 
 struct DamageAppliedEvent
 {
+    std::string targetUnitName;
     int targetArmy;
     int targetSlot;
     int damageDealt;
@@ -39,6 +32,7 @@ struct DamageAppliedEvent
 
 struct UnitDiedEvent
 {
+    std::string deadUnitName;
     int army;
     int slot;
 };
@@ -56,3 +50,13 @@ struct BattleEndedEvent
 };
 
 using BattleEvent = std::variant<TurnStartedEvent, AttackDeclaredEvent, DamageAppliedEvent, UnitDiedEvent, BattleEndedEvent>;
+
+struct BattleStep {
+    std::vector<BattleEvent> events;
+};
+
+struct BattleLog
+{
+    std::vector<BattleStep> steps;
+    BattleResult result;
+};

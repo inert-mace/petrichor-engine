@@ -22,7 +22,7 @@ add_library(glad external/glad/src/glad.c)
 target_include_directories(glad PUBLIC external/glad/include)
 
 # getting opengl from the system
-find_package(OpenGL REQUIRED)
+find_package(OpenGL REQUIRED) 
 
 # imgui also weird since i can't submodule it; adding manually like glad
 add_library(imgui 

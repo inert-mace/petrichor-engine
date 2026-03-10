@@ -1,5 +1,7 @@
 #pragma once
 #include "Window.h"
+#include "Texture.h"
+#include "TextureRegion.h"
 #include "SDL3/SDL.h"
 #include "glad/glad.h"
 
@@ -14,4 +16,5 @@ class Renderer
 
         // Renders the current frame
         void render();
+        GLuint VAO, VBO, EBO, shaderProgram, texture;
 };

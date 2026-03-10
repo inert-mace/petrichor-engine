@@ -4,6 +4,16 @@
 #include <iostream>
 #include "SDL3/SDL.h"
 
+Engine::Engine()
+{
+    std::cout << "Engine constructor called" << std::endl;
+    init();
+}
+
+Engine::~Engine()
+{
+    std::cout << "Engine destructor called" << std::endl;
+}
 
 int Engine::init()
 {
@@ -14,34 +24,33 @@ int Engine::init()
     }
 
     // initialize window
-    Window *window = new Window();
-    window->init(1280, 720);
+    window.init(1280, 720);
 
     // initialize renderer
-    Renderer *renderer = new Renderer();
-    renderer->init(*window);
+    renderer.init(window);
 
     return 0;
 }
 
 void Engine::run()
 {
-    // main loop
-}
-
-void Engine::clean()
-{
-    // clean up resources
-    /*
-    if(_renderer) { 
-        SDL_DestroyRenderer(_renderer);
-        _renderer = nullptr;
+    bool shouldQuit = false;
+    while(true)
+    {
+        // handle events
+        SDL_Event event;
+        while(SDL_PollEvent(&event))
+        {
+            if(event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)
+            {
+                std::cout << "Escape key pressed, quitting..." << std::endl;
+                shouldQuit = true;
+                break;
+            }
+        }
+        if(shouldQuit) break;
+        // render
+        renderer.render();
+        window.swapBuffers();
     }
-
-    if(_window) {
-        SDL_DestroyWindow(_window);
-        _window = nullptr;
-    }*/
-    // quit SDL
-    SDL_Quit();
 }
