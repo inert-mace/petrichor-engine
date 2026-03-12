@@ -1,6 +1,6 @@
 #include <iostream>
 #include "Renderer.h"
-#include "glm/glm.hpp"
+#include <cmath>
 
 /*const char* vertexShaderSource = "#version 460 core\n"
 "layout (location = 0) in vec3 aPos;\n"
@@ -15,25 +15,25 @@ const char* fragmentShaderSource = "#version 460 core\n"
 "   FragColor = vec4(0.2f, 0.8f, 0.5f, 1.0f);\n"
 "}\n";*/
 
-// upgraded from first shader; vertexes now have UV coordinates which correspond to texture coordinates
 const char* vertexShaderSource = "#version 460 core\n"
-"layout (location = 0) in vec3 aPos;\n"
-"layout (location = 1) in vec2 aUV;\n"
-"out vec2 vUV;\n"
+"layout (location = 0) in vec3 pos;\n"
+"layout (location = 1) in vec2 UV;\n"
+"out vec2 FragUV;\n"
+"uniform mat4 uProjection;\n"
+"uniform mat4 uModel;\n"
 "void main()\n"
 "{\n"
-"   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
-"   vUV = aUV;\n"
+"   gl_Position = uProjection * uModel * vec4(pos.x, pos.y, pos.z, 1.0);\n"
+"   FragUV = UV;\n"
 "}\n";
 
-// upgraded from first shader; fragment shader now samples from a texture using the UV coordinates passed from the vertex shader
 const char* fragmentShaderSource = "#version 460 core\n"
 "out vec4 FragColor;\n"
-"in vec2 vUV;\n"
+"in vec2 FragUV;\n"
 "uniform sampler2D uTexture;\n"
 "void main()\n"
 "{\n"
-"   FragColor = texture(uTexture, vUV);\n"
+"   FragColor = texture(uTexture, FragUV);\n"
 "}\n";
 
 Renderer::Renderer()
@@ -48,7 +48,9 @@ Renderer::~Renderer()
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
     glDeleteProgram(shaderProgram);
-    glDeleteTextures(1, &texture);
+    for (auto const& [key, textureID] : textures) {
+        glDeleteTextures(1, &textureID.id);
+    }
 }
 
 int Renderer::init(Window& window)
@@ -70,14 +72,12 @@ int Renderer::init(Window& window)
     // sets the blending function for the above (how the source and destination colors are combined)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // a bunch of points in an array that define vertices for our shape
-    // this one describes four vertices with UVs and 3D coords
-    // we'll use this as two tris by defining an index buffer next
+    // unit square
     GLfloat vertices[] = {
-        -0.1125f, -0.2f, 0.0f, 0.0f, 1.0f, // bottom left
-        0.1225f, -0.2f, 0.0f, 1.0f, 1.0f, // bottom right
-        -0.1125f, 0.6f, 0.0f, 0.0f, 0.0f,  // top left
-        0.1225f, 0.6f, 0.0f, 1.0f, 0.0f,  // top right
+        -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, // bottom left
+        0.5f, -0.5f, 0.0f, 1.0f, 0.0f, // bottom right
+        -0.5f, 0.5f, 0.0f, 0.0f, 1.0f,  // top left
+        0.5f, 0.5f, 0.0f, 1.0f, 1.0f,  // top right
     };
 
     // tells OpenGL how to make triangles out of the vertex data
@@ -86,11 +86,19 @@ int Renderer::init(Window& window)
         1, 2, 3  // second triangle (bottom right, top left, top right)
     };
 
-    SDL_Surface* knightSurface = SDL_LoadPNG("../assets/knight.png");
-    knightSurface = SDL_ConvertSurface(knightSurface, SDL_PIXELFORMAT_RGBA32); // convert surface to RGBA format since that's what OpenGL expects; this also ensures the surface has an alpha channel for transparency if it didn't already
+    SDL_Surface* loadedSurface = SDL_LoadPNG("../assets/knight.png");    
+    SDL_Surface* knightSurface = SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32);
 
-    // generate and bind texture
+    // used to have knightSurface = SDL_ConvertSurface(knightSurface, SDL_PIXELFORMAT_RGBA32)
+    // but because ConvertSurface creates a new surface and copies the old one into it, we need to free
+    // the original loaded surface first
+    SDL_DestroySurface(loadedSurface);
+
+
+    GLuint texture;
+    // generate texture, add its reference to the textures map, and bind texture
     glGenTextures(1, &texture);
+    textures.emplace("knight", Texture(knightSurface->w, knightSurface->h, texture));
     glBindTexture(GL_TEXTURE_2D, texture);
 
     // used to specify how pixel data is stored in memory
@@ -106,10 +114,16 @@ int Renderer::init(Window& window)
 
     SDL_DestroySurface(knightSurface); // we can free the surface after copying its data to the GPU
 
+    // orthographic projection matrix for 2D rendering; maps coordinates directly to screen pixels with (0,0) at the top left
+    uProjection = glm::ortho(0.0f, static_cast<float>(window.getWidth()), static_cast<float>(window.getHeight()), 0.0f, -1.0f, 1.0f); 
+    // keeping model as identity for now since we don't have any transformations yet, but we'll need it later for things like moving sprites around and rotating them
+    uModel = glm::mat4(1.0f);
+
     // compile and link shaders
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
     // turns source code into shader object, which can then be linked into a shader program; the 1 is the number of strings in the array (we only have one string), and the nullptr is an optional array of string lengths (if nullptr, strings are assumed to be null-terminated)
     glShaderSource(vertexShader, 1, &vertexShaderSource, nullptr);
+
     // compiles source code into machine code that can be executed by the GPU; we link after this to create a shader program that can be used for rendering
     glCompileShader(vertexShader);
 
@@ -122,6 +136,10 @@ int Renderer::init(Window& window)
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
     glLinkProgram(shaderProgram);
+
+    glUseProgram(shaderProgram);
+    // setting the projection uniform; we only really need to do this once unless window size changes
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "uProjection"), 1, GL_FALSE, &uProjection[0][0]);
 
     // these are already in the shader program, so we can delete these; their compiled machine code in the shader program won't be affected
     glDeleteShader(vertexShader);
@@ -167,16 +185,72 @@ int Renderer::init(Window& window)
     glBindBuffer(GL_ARRAY_BUFFER, 0); // unbind VBO to prevent accidental changes to it
     glBindVertexArray(0); // unbind VAO to prevent accidental changes to it
     
+    // for testing; creating a sample sprite and then adding it to our spriteList (should live in the engine or ECS or wherever else, not the renderer)
+    Sprite sprite = Sprite(632.0f, 344.0f, 1.0f, 1.0f, 1.0f, "knight");
+
+    // adding the sprite to our spritelist
+    spriteList.push_back(sprite);
+    if(spriteList.size() > 0) std::cout << "Sprite pushed back successfully" << std::endl;
     return 0;
 }
 
 void Renderer::render()
 {
+    // placeholder; will take the first sprite; later implementation will loop through sprite list
+    glm::vec3 scalingVector;
+    glm::vec3 translationVector;
+    std::string key;
+    if(spriteList.size() > 0)
+    {
+        key = spriteList[0].textureKey;
+        const Texture& t = textures.at(key);
+        float width = (float)t.w;
+        float height = (float)t.h;
+        scalingVector = glm::vec3(spriteList[0].scaleX*width*pixelScale, spriteList[0].scaleY*height*pixelScale, spriteList[0].scaleZ);
+
+        float snappedX = ((int)(std::round(spriteList[0].x) / pixelScale)) * pixelScale;
+        float snappedY = ((int)(std::round(spriteList[0].y) / pixelScale)) * pixelScale;
+        translationVector = glm::vec3(snappedX, snappedY, 0.0f);
+        std::cout << "Sprite at (" << snappedX << " x, " << snappedY << " y)" << std::endl;
+    }
+    else
+    {
+        key = "knight";
+        scalingVector = glm::vec3(1.0f);
+        translationVector = glm::vec3(0.0f);
+    }
+
     // clear the screen with a solid color (black in this case)
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // using our shader
     glUseProgram(shaderProgram);
+    
+    // start with identity
+    uModel = glm::mat4(1.0f);
+
+    // scale -> rotate -> transform
+    // rightmost matrix acts first which is why the following two lines are in that order
+    uModel = glm::translate(uModel, translationVector);
+    uModel = glm::scale(uModel, scalingVector);
+
+    // set model uniform
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "uModel"), 1, GL_FALSE, &uModel[0][0]);
+
+    // using texture unit 0
+    glUniform1i(glGetUniformLocation(shaderProgram, "uTexture"), 0);
+
+    // using the VAO for vertex attribute state and VBO/EBO bindings
     glBindVertexArray(VAO);
-    glBindTexture(GL_TEXTURE_2D, texture);
+
+    // even though by default textures are bound to texture unit 0, this is still good practice
+    // after all, might be using multiple textures per shader in the future
+    glActiveTexture(GL_TEXTURE0);
+
+    // where our funny little knight texture is :)
+    glBindTexture(GL_TEXTURE_2D, textures.at(key).id);
+
+    // our wonderful draw call
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0); // using 6 vertices, draw 2 triangles from bound EBO, with unsigned int indices, starting at offset 0 in EBO
 }

@@ -3,6 +3,7 @@
 #include "Renderer.h"
 #include <iostream>
 #include "SDL3/SDL.h"
+#include "glm/geometric.hpp"
 
 Engine::Engine()
 {
@@ -32,25 +33,69 @@ int Engine::init()
     return 0;
 }
 
+glm::vec2 Engine::inputDirection() {
+    const bool *key_states = SDL_GetKeyboardState(NULL);
+    glm::vec2 direction = glm::vec2(0.0f);
+
+    if (key_states[SDL_SCANCODE_W]) {
+        direction.y += -1;
+    } 
+    if (key_states[SDL_SCANCODE_A]) {
+        direction.x += -1;
+    }
+    if (key_states[SDL_SCANCODE_S]) {
+        direction.y += 1;
+    } 
+    if (key_states[SDL_SCANCODE_D]) {
+        direction.x += 1;
+    }
+
+    // normalize non-zero length direction vectors to account for diagonals
+    if(direction.x != 0 || direction.y != 0) direction = glm::normalize(direction);
+
+    return direction;
+}
+
 void Engine::run()
 {
+    // counter ticks; ticks/second is stored in the SDL_GetPerformanceFrequency
+    uint64_t lastFrame = SDL_GetPerformanceCounter();
+    double deltaTime;
+    const double inverseFrequency = 1.0 / SDL_GetPerformanceFrequency();
     bool shouldQuit = false;
+    float testSpeed = 200.00f;
     while(true)
     {
+        uint64_t currentFrame = SDL_GetPerformanceCounter();
+        // calculate deltaTime, using inverse frequency because multiplication is a faster operation than division
+        deltaTime = (currentFrame - lastFrame) * inverseFrequency;
         // handle events
         SDL_Event event;
         while(SDL_PollEvent(&event))
         {
-            if(event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)
-            {
-                std::cout << "Escape key pressed, quitting..." << std::endl;
-                shouldQuit = true;
-                break;
+            if(event.type == SDL_EVENT_KEY_DOWN) {
+                if(event.key.key == SDLK_ESCAPE)
+                {
+                    std::cout << "Escape key pressed, quitting..." << std::endl;
+                    shouldQuit = true;
+                    break;
+                }
             }
         }
+        // inputDirection is after the call to SDL_PollEvent; inputDirection needs SDL_PumpEvents and PollEvent implicitly calls it
+        glm::vec2 direction = inputDirection();
+
+        // std::cout << "directional x and y are: " << direction.x << " " << direction.y << std::endl;
+
+        renderer.spriteList[0].x += testSpeed * direction.x * deltaTime;
+        renderer.spriteList[0].y += testSpeed * direction.y * deltaTime;
+
         if(shouldQuit) break;
         // render
         renderer.render();
         window.swapBuffers();
+
+        // std::cout << "Sprite at (" << renderer.spriteList[0].x << " x, " << renderer.spriteList[0].y << " y)" << std::endl;
+        lastFrame = currentFrame;
     }
 }

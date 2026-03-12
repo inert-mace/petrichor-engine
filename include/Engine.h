@@ -1,6 +1,7 @@
 #pragma once
 #include "Window.h"
 #include "Renderer.h"
+#include "glm/glm.hpp"
 
 class Engine
 {
@@ -10,6 +11,8 @@ public:
 
     int init();
     void run();
+    glm::vec2 inputDirection();
+
 
     private:
         Window window;
