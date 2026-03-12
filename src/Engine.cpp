@@ -56,6 +56,22 @@ glm::vec2 Engine::inputDirection() {
     return direction;
 }
 
+// for physics simulations and other things that should run on fixed, framerate independent time steps
+void Engine::simulate(double deltaTime) {
+    float testSpeed = 200.00f;
+    accumulator += deltaTime;
+    while(accumulator >= fixedTimeStep)
+    {
+        glm::vec2 direction = inputDirection();
+
+        renderer.spriteList[0].x += testSpeed * direction.x * deltaTime;
+        renderer.spriteList[0].y += testSpeed * direction.y * deltaTime;
+
+        accumulator -= fixedTimeStep;
+    }
+    
+}
+
 void Engine::run()
 {
     // counter ticks; ticks/second is stored in the SDL_GetPerformanceFrequency
@@ -63,7 +79,6 @@ void Engine::run()
     double deltaTime;
     const double inverseFrequency = 1.0 / SDL_GetPerformanceFrequency();
     bool shouldQuit = false;
-    float testSpeed = 200.00f;
     while(true)
     {
         uint64_t currentFrame = SDL_GetPerformanceCounter();
@@ -83,13 +98,7 @@ void Engine::run()
                 }
             }
         }
-        // inputDirection is after the call to SDL_PollEvent; inputDirection needs SDL_PumpEvents and PollEvent implicitly calls it
-        glm::vec2 direction = inputDirection();
-
-        // std::cout << "directional x and y are: " << direction.x << " " << direction.y << std::endl;
-
-        renderer.spriteList[0].x += testSpeed * direction.x * deltaTime;
-        renderer.spriteList[0].y += testSpeed * direction.y * deltaTime;
+        simulate(deltaTime);
 
         if(shouldQuit) break;
         // render

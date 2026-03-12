@@ -19,4 +19,7 @@ public:
     private:
         Window window;
         Renderer renderer;
+        const double fixedTimeStep = 0.01667;
+        const double maxAccumulatedTime = 0.25;
+        double accumulator = 0.0;
 };
