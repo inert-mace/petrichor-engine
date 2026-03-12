@@ -31,9 +31,16 @@ const char* fragmentShaderSource = "#version 460 core\n"
 "out vec4 FragColor;\n"
 "in vec2 FragUV;\n"
 "uniform sampler2D uTexture;\n"
+"uniform bool animated;\n"
+"uniform int frame;\n"
 "void main()\n"
 "{\n"
-"   FragColor = texture(uTexture, FragUV);\n"
+"   vec2 uvs = FragUV;\n"
+"   if(animated)\n"
+"   {\n"
+"       uvs = vec2((FragUV.x/4)+((1.0/4.0)*float(frame)), FragUV.y);\n"
+"   }\n"
+"   FragColor = texture(uTexture, uvs);\n"
 "}\n";
 
 Renderer::Renderer()
@@ -114,6 +121,20 @@ int Renderer::init(Window& window)
 
     SDL_DestroySurface(knightSurface); // we can free the surface after copying its data to the GPU
 
+    SDL_Surface* loadedSurfaceAnim = SDL_LoadPNG("../assets/slashanim.png");    
+    SDL_Surface* slashSurface = SDL_ConvertSurface(loadedSurfaceAnim, SDL_PIXELFORMAT_RGBA32);
+    SDL_DestroySurface(loadedSurfaceAnim);
+    GLuint texture2;
+    glGenTextures(1, &texture2);
+    textures.emplace("slash", Texture(slashSurface->w, slashSurface->h, 16, 16, 4, true, texture2));
+    glBindTexture(GL_TEXTURE_2D, texture2);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, slashSurface->w, slashSurface->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, slashSurface->pixels);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    SDL_DestroySurface(slashSurface);
+
     // orthographic projection matrix for 2D rendering; maps coordinates directly to screen pixels with (0,0) at the top left
     uProjection = glm::ortho(0.0f, static_cast<float>(window.getWidth()), static_cast<float>(window.getHeight()), 0.0f, -1.0f, 1.0f); 
     // keeping model as identity for now since we don't have any transformations yet, but we'll need it later for things like moving sprites around and rotating them
@@ -186,71 +207,70 @@ int Renderer::init(Window& window)
     glBindVertexArray(0); // unbind VAO to prevent accidental changes to it
     
     // for testing; creating a sample sprite and then adding it to our spriteList (should live in the engine or ECS or wherever else, not the renderer)
-    Sprite sprite = Sprite(632.0f, 344.0f, 1.0f, 1.0f, 1.0f, "knight");
+    Sprite sprite = Sprite(632.0f, 344.0f, 0.5f, 1.0f, 1.0f, 1.0f, "knight");
+    Sprite sprite2 = Sprite(632.0f, 344.0f, 0.0f, 1.0f, 1.0f, 1.0f, "slash");
 
     // adding the sprite to our spritelist
     spriteList.push_back(sprite);
+    spriteList.push_back(sprite2);
     if(spriteList.size() > 0) std::cout << "Sprite pushed back successfully" << std::endl;
     return 0;
 }
 
 void Renderer::render()
 {
-    // placeholder; will take the first sprite; later implementation will loop through sprite list
-    glm::vec3 scalingVector;
-    glm::vec3 translationVector;
-    std::string key;
-    if(spriteList.size() > 0)
-    {
-        key = spriteList[0].textureKey;
-        const Texture& t = textures.at(key);
-        float width = (float)t.w;
-        float height = (float)t.h;
-        scalingVector = glm::vec3(spriteList[0].scaleX*width*pixelScale, spriteList[0].scaleY*height*pixelScale, spriteList[0].scaleZ);
-
-        float snappedX = ((int)(std::round(spriteList[0].x) / pixelScale)) * pixelScale;
-        float snappedY = ((int)(std::round(spriteList[0].y) / pixelScale)) * pixelScale;
-        translationVector = glm::vec3(snappedX, snappedY, 0.0f);
-        // std::cout << "Sprite at (" << snappedX << " x, " << snappedY << " y)" << std::endl;
-    }
-    else
-    {
-        key = "knight";
-        scalingVector = glm::vec3(1.0f);
-        translationVector = glm::vec3(0.0f);
-    }
-
     // clear the screen with a solid color (black in this case)
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // using our shader
     glUseProgram(shaderProgram);
+
+    for(size_t i = 0; i < spriteList.size(); i++) {
+        std::cout << "Processing: " << spriteList[i].textureKey << " with ID " << textures.at(spriteList[i].textureKey).id << std::endl;
+
+        glm::vec3 scalingVector;
+        glm::vec3 translationVector;
+        std::string key;
+
+        key = spriteList[i].textureKey;
+        const Texture& t = textures.at(key);
+        float width = (float)t.w;
+        float height = (float)t.h;
+        scalingVector = glm::vec3(spriteList[i].scaleX*width*pixelScale, spriteList[i].scaleY*height*pixelScale, spriteList[i].scaleZ);
+        float snappedX = ((int)(std::round(spriteList[i].x) / pixelScale)) * pixelScale;
+        float snappedY = ((int)(std::round(spriteList[i].y) / pixelScale)) * pixelScale;
+        translationVector = glm::vec3(snappedX, snappedY, spriteList[i].z);
     
-    // start with identity
-    uModel = glm::mat4(1.0f);
+        // start with identity
+        uModel = glm::mat4(1.0f);
 
-    // scale -> rotate -> transform
-    // rightmost matrix acts first which is why the following two lines are in that order
-    uModel = glm::translate(uModel, translationVector);
-    uModel = glm::scale(uModel, scalingVector);
+        // scale -> rotate -> transform
+        // rightmost matrix acts first which is why the following two lines are in that order
+        uModel = glm::translate(uModel, translationVector);
+        uModel = glm::scale(uModel, scalingVector);
 
-    // set model uniform
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "uModel"), 1, GL_FALSE, &uModel[0][0]);
+        // set model uniform
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "uModel"), 1, GL_FALSE, &uModel[0][0]);
 
-    // using texture unit 0
-    glUniform1i(glGetUniformLocation(shaderProgram, "uTexture"), 0);
+        // using texture unit 0
+        glUniform1i(glGetUniformLocation(shaderProgram, "uTexture"), 0);
 
-    // using the VAO for vertex attribute state and VBO/EBO bindings
-    glBindVertexArray(VAO);
+        // get animation info from sprite
+        glUniform1i(glGetUniformLocation(shaderProgram, "animated"), textures.at(key).animated);
+        glUniform1i(glGetUniformLocation(shaderProgram, "frame"), textures.at(key).currFrame-1);
 
-    // even though by default textures are bound to texture unit 0, this is still good practice
-    // after all, might be using multiple textures per shader in the future
-    glActiveTexture(GL_TEXTURE0);
+        // using the VAO for vertex attribute state and VBO/EBO bindings
+        glBindVertexArray(VAO);
 
-    // where our funny little knight texture is :)
-    glBindTexture(GL_TEXTURE_2D, textures.at(key).id);
+        // even though by default textures are bound to texture unit 0, this is still good practice
+        // after all, might be using multiple textures per shader in the future
+        glActiveTexture(GL_TEXTURE0);
 
-    // our wonderful draw call
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0); // using 6 vertices, draw 2 triangles from bound EBO, with unsigned int indices, starting at offset 0 in EBO
+        // where our texture is :)
+        glBindTexture(GL_TEXTURE_2D, textures.at(key).id);
+
+        // our wonderful draw call
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0); // using 6 vertices, draw 2 triangles from bound EBO, with unsigned int indices, starting at offset 0 in EBO
+    }
 }

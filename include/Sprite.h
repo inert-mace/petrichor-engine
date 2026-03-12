@@ -7,8 +7,9 @@ struct Sprite {
     std::string textureKey;
     float x;
     float y;
+    float z;
     float scaleX;
     float scaleY;
     float scaleZ;
-    Sprite(float x, float y, float scaleX, float scaleY, float scaleZ, std::string textureKey) : x(x), y(y), scaleX(scaleX), scaleY(scaleY), scaleZ(scaleZ), textureKey(textureKey) {}
+    Sprite(float x, float y, float z, float scaleX, float scaleY, float scaleZ, std::string textureKey) : x(x), y(y), z(z), scaleX(scaleX), scaleY(scaleY), scaleZ(scaleZ), textureKey(textureKey) {}
 };

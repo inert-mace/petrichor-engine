@@ -64,8 +64,8 @@ void Engine::simulate(double deltaTime) {
     {
         glm::vec2 direction = inputDirection();
 
-        renderer.spriteList[0].x += testSpeed * direction.x * deltaTime;
-        renderer.spriteList[0].y += testSpeed * direction.y * deltaTime;
+        renderer.spriteList[0].x += testSpeed * direction.x * fixedTimeStep;
+        renderer.spriteList[0].y += testSpeed * direction.y * fixedTimeStep;
 
         accumulator -= fixedTimeStep;
     }
@@ -77,6 +77,7 @@ void Engine::run()
     // counter ticks; ticks/second is stored in the SDL_GetPerformanceFrequency
     uint64_t lastFrame = SDL_GetPerformanceCounter();
     double deltaTime;
+    double elapsedAnimationTime = 0.0;
     const double inverseFrequency = 1.0 / SDL_GetPerformanceFrequency();
     bool shouldQuit = false;
     while(true)
@@ -84,7 +85,6 @@ void Engine::run()
         uint64_t currentFrame = SDL_GetPerformanceCounter();
         // calculate deltaTime, using inverse frequency because multiplication is a faster operation than division
         deltaTime = (currentFrame - lastFrame) * inverseFrequency;
-        std::cout << deltaTime << std::endl;
         // handle events
         SDL_Event event;
         while(SDL_PollEvent(&event))
@@ -102,10 +102,19 @@ void Engine::run()
 
         if(shouldQuit) break;
         // render
+        animation(deltaTime, elapsedAnimationTime, 0.25, renderer.textures.at("slash"));
         renderer.render();
         window.swapBuffers();
 
         // std::cout << "Sprite at (" << renderer.spriteList[0].x << " x, " << renderer.spriteList[0].y << " y)" << std::endl;
         lastFrame = currentFrame;
+    }
+}
+
+void Engine::animation(double deltaTime, double& elapsedTime, double timePerFrame, Texture& texture) {
+    elapsedTime += deltaTime;
+    if(elapsedTime >= timePerFrame) {
+        texture.advanceFrame();
+        elapsedTime -= timePerFrame;
     }
 }

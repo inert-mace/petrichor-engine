@@ -14,7 +14,7 @@ public:
     // fixed-timestep simulation
     void simulate(double deltaTime);
     glm::vec2 inputDirection();
-
+    void animation(double deltaTime, double& elapsedTime, double timePerFrame, Texture& texture);
 
     private:
         Window window;
