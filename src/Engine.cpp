@@ -69,6 +69,7 @@ void Engine::run()
         uint64_t currentFrame = SDL_GetPerformanceCounter();
         // calculate deltaTime, using inverse frequency because multiplication is a faster operation than division
         deltaTime = (currentFrame - lastFrame) * inverseFrequency;
+        std::cout << deltaTime << std::endl;
         // handle events
         SDL_Event event;
         while(SDL_PollEvent(&event))

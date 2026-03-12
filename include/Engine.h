@@ -11,6 +11,8 @@ public:
 
     int init();
     void run();
+    // fixed-timestep simulation
+    void simulate(double deltaTime);
     glm::vec2 inputDirection();
 
 

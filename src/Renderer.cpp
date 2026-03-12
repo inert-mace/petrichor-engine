@@ -211,7 +211,7 @@ void Renderer::render()
         float snappedX = ((int)(std::round(spriteList[0].x) / pixelScale)) * pixelScale;
         float snappedY = ((int)(std::round(spriteList[0].y) / pixelScale)) * pixelScale;
         translationVector = glm::vec3(snappedX, snappedY, 0.0f);
-        std::cout << "Sprite at (" << snappedX << " x, " << snappedY << " y)" << std::endl;
+        // std::cout << "Sprite at (" << snappedX << " x, " << snappedY << " y)" << std::endl;
     }
     else
     {
