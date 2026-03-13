@@ -14,9 +14,10 @@ int main()
     test.testBattle2();
     std::cout << "Testing complete, running engine" << std::endl;
     std::cin.get(); // wait for user input before closing the console window
-
-    Engine engine;
-    engine.run();
+    {
+        Engine engine;
+        engine.run();
+    } // ensures engine goes out of scope and calls all of its destructors before SDL_Quit()
     SDL_Quit();
     
     return 0;

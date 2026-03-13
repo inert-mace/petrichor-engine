@@ -19,13 +19,17 @@ Engine::~Engine()
 int Engine::init()
 {
     // initialize SDL
-    if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_AUDIO ) < 0)
+    if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_AUDIO) < 0)
     {
         throw std::runtime_error(std::string("SDL initialization failed:") + SDL_GetError());
     }
 
     // initialize window
     window.init(1280, 720);
+
+    audioManager.init();
+    audioManager.createSound("../assets/battle_theme.wav", "battle_theme");
+    audioManager.playSound("battle_theme", true);
 
     // initialize renderer
     renderer.init(window);
@@ -102,6 +106,7 @@ void Engine::run()
 
         if(shouldQuit) break;
         // render
+        audioManager.update();
         animation(deltaTime, elapsedAnimationTime, 0.25, renderer.textures.at("slash"));
         renderer.render();
         window.swapBuffers();

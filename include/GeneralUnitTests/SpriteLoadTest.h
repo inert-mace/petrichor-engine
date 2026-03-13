@@ -1,4 +1,5 @@
-#pragma once
+// unused unit test
+/* #pragma once
 #include "Window.h"
 #include "Renderer.h"
 #include "Sprite.h"
@@ -42,4 +43,4 @@ SpriteLoadTest::testSpriteLoading() {
         renderer.render();
         window.swapBuffers();
     }
-}
+} */

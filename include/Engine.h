@@ -1,6 +1,7 @@
 #pragma once
 #include "Window.h"
 #include "Renderer.h"
+#include "AudioManager.h"
 #include "glm/glm.hpp"
 
 class Engine
@@ -19,6 +20,7 @@ public:
     private:
         Window window;
         Renderer renderer;
+        AudioManager audioManager;
         const double fixedTimeStep = 0.01667;
         const double maxAccumulatedTime = 0.25;
         double accumulator = 0.0;
