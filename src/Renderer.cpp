@@ -31,7 +31,13 @@ const char* fragmentShaderSource = "#version 460 core\n"
 "out vec4 FragColor;\n"
 "in vec2 FragUV;\n"
 "uniform sampler2D uTexture;\n"
+"uniform sampler2D uDissolveMask;\n"
 "uniform bool animated;\n"
+"uniform bool dissolve;\n"
+"uniform float dissolveProgress;\n"
+"uniform ivec2 spriteTextureSize;\n"
+"uniform ivec2 dissolveMaskSize;\n"
+"uniform ivec2 maskOffset;\n"
 "uniform int frame;\n"
 "void main()\n"
 "{\n"
@@ -41,6 +47,18 @@ const char* fragmentShaderSource = "#version 460 core\n"
 "       uvs = vec2((FragUV.x/4)+((1.0/4.0)*float(frame)), FragUV.y);\n"
 "   }\n"
 "   FragColor = texture(uTexture, uvs);\n"
+"   if(dissolve && (FragColor.a > 0.001))\n"
+"   {\n"
+"       ivec2 spriteTexel = ivec2(floor(uvs * vec2(spriteTextureSize)));\n"
+"       spriteTexel = clamp(spriteTexel, ivec2(0), spriteTextureSize - ivec2(1));\n"
+"       ivec2 maskTexel = spriteTexel + maskOffset;\n"
+"       maskTexel = clamp(maskTexel, ivec2(0), dissolveMaskSize - ivec2(1));"
+"       vec4 sampledMask = texelFetch(uDissolveMask, maskTexel, 0);\n"
+"       if(sampledMask.r <= dissolveProgress)\n"
+"       {\n"
+"           discard;\n"
+"       }\n"
+"   }\n"
 "}\n";
 
 Renderer::Renderer()
@@ -93,47 +111,15 @@ int Renderer::init(Window& window)
         1, 2, 3  // second triangle (bottom right, top left, top right)
     };
 
-    SDL_Surface* loadedSurface = SDL_LoadPNG("../assets/knight.png");    
-    SDL_Surface* knightSurface = SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32);
-
-    // used to have knightSurface = SDL_ConvertSurface(knightSurface, SDL_PIXELFORMAT_RGBA32)
-    // but because ConvertSurface creates a new surface and copies the old one into it, we need to free
-    // the original loaded surface first
-    SDL_DestroySurface(loadedSurface);
-
-
-    GLuint texture;
-    // generate texture, add its reference to the textures map, and bind texture
-    glGenTextures(1, &texture);
-    textures.emplace("knight", Texture(knightSurface->w, knightSurface->h, texture));
-    glBindTexture(GL_TEXTURE_2D, texture);
-
-    // used to specify how pixel data is stored in memory
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-    // copy pixel data from SDL surface to OpenGL texture; GL_RGBA8 means each pixel has red, green, blue, and alpha channels, and GL_UNSIGNED_BYTE means each channel is an unsigned byte (0-255)
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, knightSurface->w, knightSurface->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, knightSurface->pixels);
-
-    // what opengl will do when minifying and magnifying the texture
-    // linear interpolates between 4 closest pixels, nearest uses closest pixel (better for pixel art)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    SDL_DestroySurface(knightSurface); // we can free the surface after copying its data to the GPU
-
-    SDL_Surface* loadedSurfaceAnim = SDL_LoadPNG("../assets/slashanim.png");    
-    SDL_Surface* slashSurface = SDL_ConvertSurface(loadedSurfaceAnim, SDL_PIXELFORMAT_RGBA32);
-    SDL_DestroySurface(loadedSurfaceAnim);
-    GLuint texture2;
-    glGenTextures(1, &texture2);
-    textures.emplace("slash", Texture(slashSurface->w, slashSurface->h, 16, 16, 4, true, texture2));
-    glBindTexture(GL_TEXTURE_2D, texture2);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, slashSurface->w, slashSurface->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, slashSurface->pixels);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    SDL_DestroySurface(slashSurface);
+    loadTexture("../assets/knight.png", "knight", GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+    loadTexture("../assets/hunter.png", "hunter", GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+    loadTexture("../assets/wizard.png", "wizard", GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+    loadTexture("../assets/slashanim.png", "slash", GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, 16, 16, 4, true);
+    loadTexture("../assets/dissolve_gradient.png", "dissolve", GL_MIRRORED_REPEAT, GL_CLAMP_TO_EDGE);
+    
+    // binding dissolve to texture unit 1
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, textures.at("dissolve").id);
 
     // orthographic projection matrix for 2D rendering; maps coordinates directly to screen pixels with (0,0) at the top left
     uProjection = glm::ortho(0.0f, static_cast<float>(window.getWidth()), static_cast<float>(window.getHeight()), 0.0f, -1.0f, 1.0f); 
@@ -162,6 +148,8 @@ int Renderer::init(Window& window)
     // setting the projection uniform; we only really need to do this once unless window size changes
     glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "uProjection"), 1, GL_FALSE, &uProjection[0][0]);
 
+    // setting dissolve mask texture unit
+    glUniform1i(glGetUniformLocation(shaderProgram, "uDissolveMask"), 1);
     // these are already in the shader program, so we can delete these; their compiled machine code in the shader program won't be affected
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
@@ -207,14 +195,128 @@ int Renderer::init(Window& window)
     glBindVertexArray(0); // unbind VAO to prevent accidental changes to it
     
     // for testing; creating a sample sprite and then adding it to our spriteList (should live in the engine or ECS or wherever else, not the renderer)
-    Sprite sprite = Sprite(632.0f, 344.0f, 0.5f, 1.0f, 1.0f, 1.0f, "knight");
-    Sprite sprite2 = Sprite(632.0f, 344.0f, 0.0f, 1.0f, 1.0f, 1.0f, "slash");
+    Sprite sprite = Sprite(632.0f, 344.0f, 0.5f, 1.0f, 1.0f, 1.0f, "knight", false);
+    Sprite sprite2 = Sprite(400.0f, 344.0f, 0.5f, 1.0f, 1.0f, 1.0f, "hunter", true);
+    Sprite sprite3 = Sprite(800.0f, 344.0f, 0.5f, 1.0f, 1.0f, 1.0f, "wizard", true);
+    Sprite sprite4 = Sprite(632.0f, 344.0f, 0.0f, 1.0f, 1.0f, 1.0f, "slash", false);
 
-    // adding the sprite to our spritelist
+    // adding sprites to our spritelist
     spriteList.push_back(sprite);
     spriteList.push_back(sprite2);
-    if(spriteList.size() > 0) std::cout << "Sprite pushed back successfully" << std::endl;
+    spriteList.push_back(sprite3);
+    spriteList.push_back(sprite4);
+
+    UL_uModel = glGetUniformLocation(shaderProgram, "uModel");
+    UL_uTexture = glGetUniformLocation(shaderProgram, "uTexture");
+    UL_animated = glGetUniformLocation(shaderProgram, "animated");
+    UL_frame = glGetUniformLocation(shaderProgram, "frame");
+    UL_dissolve = glGetUniformLocation(shaderProgram, "dissolve");
+    UL_dissolveProgress = glGetUniformLocation(shaderProgram, "dissolveProgress");
+    UL_dissolveMaskSize = glGetUniformLocation(shaderProgram, "dissolveMaskSize");;
+    UL_spriteTextureSize = glGetUniformLocation(shaderProgram, "spriteTextureSize");;
+    UL_maskOffset = glGetUniformLocation(shaderProgram, "maskOffset");
+
+    dissolveHalfWidth = (textures.at("dissolve").w/2);
+
     return 0;
+}
+
+// overload: static texture
+void Renderer::loadTexture(const std::string& filePath, const std::string& key, GLint horizontalWrapMode, GLint verticalWrapMode) {
+    if(textures.find(key) != textures.end()) {
+        std::cerr << "Key already exists! Skipping load." << std::endl;
+        return;
+    }
+    SDL_Surface* loadedSurface = SDL_LoadPNG(filePath.c_str());
+    if(!loadedSurface) {
+        throw std::runtime_error(std::string("Failed to load texture from file path:") + SDL_GetError());
+    }
+    SDL_Surface* textureSurface = SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32);
+    if(!textureSurface) {
+        // making sure to destroy loadedSurface here so it doesn't leak if conversion fails
+        SDL_DestroySurface(loadedSurface);
+        throw std::runtime_error(std::string("Failed to convert surface to format:") + SDL_GetError());
+    }
+    
+    // SDL_ConvertSurface creates a new surface and copies the converted surface onto it, so we need to free the old surface
+    SDL_DestroySurface(loadedSurface);
+
+    // here we get a GLuint to store a handle, which we then generate and store (the reference to) a texture in
+    GLuint texture;
+    glGenTextures(1, &texture);
+
+    // putting the texture handle into our asset map
+    textures.emplace(key, Texture(textureSurface->w, textureSurface->h, texture));
+
+    // sets texture to be the active texture (commands apply to this texture; this texture is stored in the active texture unit)
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    // used to specify how pixel data is stored in memory
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    // copy pixel data from SDL surface to OpenGL texture; GL_RGBA means each pixel has red, green, blue, and alpha channels, and GL_UNSIGNED_BYTE means each channel is an unsigned byte (0-255)
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, textureSurface->w, textureSurface->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, textureSurface->pixels);
+
+    // what opengl will do when minifying and magnifying the texture
+    // linear interpolates between 4 closest pixels, nearest uses closest pixel (better for pixel art)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, horizontalWrapMode);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, verticalWrapMode);
+
+    // unbind texture
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    SDL_DestroySurface(textureSurface);
+}
+
+// overload: animated texture
+void Renderer::loadTexture(const std::string& filePath, const std::string& key, GLint horizontalWrapMode, GLint verticalWrapMode, int frameX, int frameY, int frameCount, bool animated) {
+    if(textures.find(key) != textures.end()) {
+        std::cerr << "Key already exists! Skipping load." << std::endl;
+        return;
+    }
+    SDL_Surface* loadedSurface = SDL_LoadPNG(filePath.c_str());
+    if(!loadedSurface) {
+        throw std::runtime_error(std::string("Failed to load texture from file path:") + SDL_GetError());
+    }
+    SDL_Surface* textureSurface = SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32);
+    if(!textureSurface) {
+        // making sure to destroy loadedSurface here so it doesn't leak if conversion fails
+        SDL_DestroySurface(loadedSurface);
+        throw std::runtime_error(std::string("Failed to convert surface to format:") + SDL_GetError());
+    }
+
+    // SDL_ConvertSurface creates a new surface and copies the converted surface onto it, so we need to free the old surface
+    SDL_DestroySurface(loadedSurface);
+
+    // here we get a GLuint to store a handle, which we then generate and store (the reference to) a texture in
+    GLuint texture;
+    glGenTextures(1, &texture);
+
+    // putting the texture handle into our asset map
+    textures.emplace(key, Texture(textureSurface->w, textureSurface->h, frameX, frameY, frameCount, animated, texture));
+
+    // sets texture to be the active texture (commands apply to this texture; this texture is stored in the active texture unit)
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    // used to specify how pixel data is stored in memory
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    // copy pixel data from SDL surface to OpenGL texture; GL_RGBA means each pixel has red, green, blue, and alpha channels, and GL_UNSIGNED_BYTE means each channel is an unsigned byte (0-255)
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, textureSurface->w, textureSurface->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, textureSurface->pixels);
+
+    // what opengl will do when minifying and magnifying the texture
+    // linear interpolates between 4 closest pixels, nearest uses closest pixel (better for pixel art)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, horizontalWrapMode);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, verticalWrapMode);
+
+    // unbind texture
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    SDL_DestroySurface(textureSurface);
 }
 
 void Renderer::render()
@@ -227,7 +329,6 @@ void Renderer::render()
     glUseProgram(shaderProgram);
 
     for(size_t i = 0; i < spriteList.size(); i++) {
-        std::cout << "Processing: " << spriteList[i].textureKey << " with ID " << textures.at(spriteList[i].textureKey).id << std::endl;
 
         glm::vec3 scalingVector;
         glm::vec3 translationVector;
@@ -251,20 +352,24 @@ void Renderer::render()
         uModel = glm::scale(uModel, scalingVector);
 
         // set model uniform
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "uModel"), 1, GL_FALSE, &uModel[0][0]);
+        glUniformMatrix4fv(UL_uModel, 1, GL_FALSE, &uModel[0][0]);
 
         // using texture unit 0
-        glUniform1i(glGetUniformLocation(shaderProgram, "uTexture"), 0);
+        glUniform1i(UL_uTexture, 0);
 
         // get animation info from sprite
-        glUniform1i(glGetUniformLocation(shaderProgram, "animated"), textures.at(key).animated);
-        glUniform1i(glGetUniformLocation(shaderProgram, "frame"), textures.at(key).currFrame-1);
+        glUniform1i(UL_animated, textures.at(key).animated);
+        glUniform1i(UL_frame, textures.at(key).currFrame-1);
+        glUniform1i(UL_dissolve, spriteList[i].dissolve);
+        glUniform1f(UL_dissolveProgress, spriteList[i].dissolveProgress);
+        glUniform2i(UL_spriteTextureSize, width, height);
+        glUniform2i(UL_dissolveMaskSize, textures.at("dissolve").w, textures.at("dissolve").h);
+        glUniform2i(UL_maskOffset, std::floor(dissolveHalfWidth-(width/2)), std::floor((spriteList[i].maskPanY*textures.at("dissolve").h)-height));
 
         // using the VAO for vertex attribute state and VBO/EBO bindings
         glBindVertexArray(VAO);
 
-        // even though by default textures are bound to texture unit 0, this is still good practice
-        // after all, might be using multiple textures per shader in the future
+        // activate the texture unit that the texture wants to bind to
         glActiveTexture(GL_TEXTURE0);
 
         // where our texture is :)

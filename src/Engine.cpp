@@ -84,6 +84,8 @@ void Engine::run()
     double elapsedAnimationTime = 0.0;
     const double inverseFrequency = 1.0 / SDL_GetPerformanceFrequency();
     bool shouldQuit = false;
+    float dissolutionRate = 0.2f;
+    float panRate = 0.2f;
     while(true)
     {
         uint64_t currentFrame = SDL_GetPerformanceCounter();
@@ -108,6 +110,14 @@ void Engine::run()
         // render
         audioManager.update();
         animation(deltaTime, elapsedAnimationTime, 0.25, renderer.textures.at("slash"));
+
+        for(auto &sprite : renderer.spriteList) {
+            if(sprite.dissolve) {
+                sprite.dissolveProgress = std::min(1.0f, sprite.dissolveProgress + static_cast<float>(dissolutionRate * deltaTime));
+                sprite.maskPanY = std::max(0.0f, sprite.maskPanY - static_cast<float>(panRate * deltaTime));
+            }
+        }
+
         renderer.render();
         window.swapBuffers();
 
