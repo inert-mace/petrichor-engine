@@ -25,8 +25,17 @@ class Renderer
         void loadTexture(const std::string& filePath, const std::string& key, GLint horizontalWrapMode, GLint verticalWrapMode, int frameX, int frameY, int frameCount, bool animated);
         // Renders the current frame
         void render();
-        GLuint VAO, VBO, EBO, shaderProgram;
-        int pixelScale = 8;
+        // Changes the ambient color
+        void setAmbientColor(int r, int g, int b);
+        void setAmbientIntensity(float i);
+        void cacheULs();
+        void addSprites();
+        void loadTextures();
+        void buildPipeline();
+        void createBufferObjects(const GLfloat* vertices, size_t vertexBytes, const GLuint* indices, size_t indexBytes);
+        GLuint VAO, VBO, EBO;
+        GLuint shaderProgram = 0;
+        int pixelScale = 4;
         glm::mat4 uProjection, uModel;
         std::unordered_map<std::string, Texture> textures;
 
@@ -41,6 +50,14 @@ class Renderer
         GLint UL_dissolveProgress;
         GLint UL_dissolveMaskSize;
         GLint UL_spriteTextureSize;
-        GLint UL_maskOffset;
-        int dissolveHalfWidth;
+        GLint UL_ambientColor;
+        GLint UL_ambientColorIntensity;
+        GLint UL_burnColor;
+        GLint UL_burnBand;
+        glm::vec3 ambientColor = glm::vec3(34.0f/255.0f, 32.0f/255.0f, 52.0f/255.0f);
+        glm::vec3 burnColor = glm::vec3(34.0f/255.0f, 32.0f/255.0f, 52.0f/255.0f);
+        float ambientColorIntensity = 0.25f;
+        float burnBand = 0.0f;
+        // checks if renderer needs to sort its spriteList
+        bool renderOrderDirty = false;
 };

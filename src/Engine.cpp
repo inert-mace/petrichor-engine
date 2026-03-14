@@ -2,6 +2,7 @@
 #include "Window.h"
 #include "Renderer.h"
 #include <iostream>
+#include <algorithm>
 #include "SDL3/SDL.h"
 #include "glm/geometric.hpp"
 
@@ -84,8 +85,8 @@ void Engine::run()
     double elapsedAnimationTime = 0.0;
     const double inverseFrequency = 1.0 / SDL_GetPerformanceFrequency();
     bool shouldQuit = false;
-    float dissolutionRate = 0.2f;
-    float panRate = 0.2f;
+    bool reversed = true;
+    float dissolutionRate = 0.5f;
     while(true)
     {
         uint64_t currentFrame = SDL_GetPerformanceCounter();
@@ -102,6 +103,16 @@ void Engine::run()
                     shouldQuit = true;
                     break;
                 }
+                if(event.key.key == SDLK_SPACE)
+                {
+                    for(auto &sprite : renderer.spriteList) {
+                        if((sprite.textureKey == "title"))
+                        {
+                            sprite.dissolve = !sprite.dissolve;
+                            sprite.dissolveProgress = (reversed) ? 1.0f : 0.0f;
+                        }
+                    }
+                }
             }
         }
         simulate(deltaTime);
@@ -109,12 +120,12 @@ void Engine::run()
         if(shouldQuit) break;
         // render
         audioManager.update();
-        animation(deltaTime, elapsedAnimationTime, 0.25, renderer.textures.at("slash"));
+        animation(deltaTime, elapsedAnimationTime, 0.1, renderer.textures.at("slash"));
 
         for(auto &sprite : renderer.spriteList) {
             if(sprite.dissolve) {
-                sprite.dissolveProgress = std::min(1.0f, sprite.dissolveProgress + static_cast<float>(dissolutionRate * deltaTime));
-                sprite.maskPanY = std::max(0.0f, sprite.maskPanY - static_cast<float>(panRate * deltaTime));
+                sprite.dissolveProgress = (reversed) ? std::clamp(sprite.dissolveProgress + static_cast<float>(-dissolutionRate * deltaTime), 0.0f, 1.0f) : std::clamp(sprite.dissolveProgress + static_cast<float>(dissolutionRate * deltaTime), 0.0f, 1.0f);
+                std::cout << sprite.dissolveProgress << std::endl;
             }
         }
 
