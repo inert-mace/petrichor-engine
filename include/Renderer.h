@@ -1,7 +1,9 @@
 #pragma once
 #include "Window.h"
 #include "Texture.h"
-#include "Sprite.h"
+#include "Components/SpriteComponent.h"
+#include "Components/TransformComponent.h"
+#include "Components/DissolveComponent.h"
 #include "TextureRegion.h"
 #include "SDL3/SDL.h"
 #include "glad/glad.h"
@@ -10,6 +12,14 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+
+struct SpriteDrawCommand {
+    // TODO: change to copied snapshot of entity sprite/transform/dissolve state instead of pointers to ECS data
+    // stops renderer from being tightly coupled w ECS
+    const TransformComponent* t;
+    const SpriteComponent* s;
+    const DissolveComponent* d;
+};
 
 class Renderer
 {
@@ -24,12 +34,15 @@ class Renderer
         // loads a texture (overload: animated)
         void loadTexture(const std::string& filePath, const std::string& key, GLint horizontalWrapMode, GLint verticalWrapMode, int frameX, int frameY, int frameCount, bool animated);
         // Renders the current frame
-        void render();
+        void beginFrame();
+        void submitSprite(const SpriteDrawCommand& command);
+        void flush();
+        void drawSprite(const SpriteDrawCommand& command);
+        void endFrame();
         // Changes the ambient color
         void setAmbientColor(int r, int g, int b);
         void setAmbientIntensity(float i);
         void cacheULs();
-        void addSprites();
         void loadTextures();
         void buildPipeline();
         void createBufferObjects(const GLfloat* vertices, size_t vertexBytes, const GLuint* indices, size_t indexBytes);
@@ -38,10 +51,7 @@ class Renderer
         int pixelScale = 4;
         glm::mat4 uProjection, uModel;
         std::unordered_map<std::string, Texture> textures;
-
-        // temp location; this will go into engine later
-        // but I want to test model transforms/positions.
-        std::vector<Sprite> spriteList;
+        std::vector<SpriteDrawCommand> drawCommands;
         GLint UL_uModel;
         GLint UL_uTexture;
         GLint UL_animated;
@@ -58,6 +68,4 @@ class Renderer
         glm::vec3 burnColor = glm::vec3(34.0f/255.0f, 32.0f/255.0f, 52.0f/255.0f);
         float ambientColorIntensity = 0.25f;
         float burnBand = 0.0f;
-        // checks if renderer needs to sort its spriteList
-        bool renderOrderDirty = false;
 };

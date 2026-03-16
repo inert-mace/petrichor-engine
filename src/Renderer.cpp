@@ -166,8 +166,6 @@ int Renderer::init(Window& window)
     glUniform1i(glGetUniformLocation(shaderProgram, "uDissolveMask"), 1);
     
     createBufferObjects(vertices, sizeof(vertices), indices, sizeof(indices));
-    
-    addSprites();
 
     cacheULs();
 
@@ -272,7 +270,8 @@ void Renderer::loadTexture(const std::string& filePath, const std::string& key, 
     SDL_DestroySurface(textureSurface);
 }
 
-void Renderer::render()
+// For frame setup and setting frame-wide uniforms.
+void Renderer::beginFrame()
 {
     // clear the screen with a solid color (black in this case)
     glClearColor(ambientColor.r+ambientColor.r*ambientColorIntensity, ambientColor.g+ambientColor.g*ambientColorIntensity, ambientColor.b+ambientColor.b*ambientColorIntensity, 1.0f);
@@ -281,74 +280,113 @@ void Renderer::render()
     // using our shader
     glUseProgram(shaderProgram);
 
-    // sorting if render order is marked dirty
-    if(renderOrderDirty) {
-        std::sort(spriteList.begin(), spriteList.end(), [](const Sprite& a, const Sprite& b) { return a.z > b.z; });
-        renderOrderDirty = false;
-    }
-    for(size_t i = 0; i < spriteList.size(); i++) {
+    // using the VAO for vertex attribute state and VBO/EBO bindings
+    // only have one quad so this is okay
+    glBindVertexArray(VAO);
 
-        glm::vec3 scalingVector;
-        glm::vec3 translationVector;
-        std::string key;
+    // send ambient color info
+    glUniform3f(UL_ambientColor, ambientColor.r, ambientColor.g, ambientColor.b);
+    glUniform1f(UL_ambientColorIntensity, ambientColorIntensity);
 
-        key = spriteList[i].textureKey;
-        const Texture& t = textures.at(key);
-        float width = (float)t.w;
-        float height = (float)t.h;
-        scalingVector = glm::vec3(spriteList[i].scaleX*width*pixelScale, spriteList[i].scaleY*height*pixelScale, spriteList[i].scaleZ);
-        float snappedX = ((int)(std::round(spriteList[i].x) / pixelScale)) * pixelScale;
-        float snappedY = ((int)(std::round(spriteList[i].y) / pixelScale)) * pixelScale;
-        translationVector = glm::vec3(snappedX, snappedY, spriteList[i].z);
+    // get dissolve burn info
+    glUniform1f(UL_burnBand, burnBand);
+    glUniform3f(UL_burnColor, burnColor.r, burnColor.g, burnColor.b);
+}
+
+// Submit a draw command to be sorted in flush(). Necessary for a draw order sorted by layer and z-level.
+void Renderer::submitSprite(const SpriteDrawCommand& command) {
+    drawCommands.push_back(command);
+}
+
+// Supplies necessary uniforms, binds the correct dissolve (if present), and draws the sprite after applying scaling and translation.
+void Renderer::drawSprite(const SpriteDrawCommand& command) {
+    glm::vec3 scalingVector;
+    glm::vec3 translationVector;
+    std::string key;
+
+    key = command.s->textureKey;
+    const Texture& tex = textures.at(key);
+    float width = (float)tex.w;
+    float height = (float)tex.h;
+    scalingVector = glm::vec3(command.t->scale.x*width*pixelScale, command.t->scale.y*height*pixelScale, command.t->scale.z);
+
+    // for snapping to current pixel scale, i.e: if pixels appear 4x as large on screen
+    float snappedX = ((int)(std::round(command.t->position.x) / pixelScale)) * pixelScale;
+    float snappedY = ((int)(std::round(command.t->position.y) / pixelScale)) * pixelScale;
+    translationVector = glm::vec3(snappedX, snappedY, command.t->scale.z);
     
-        // start with identity
-        uModel = glm::mat4(1.0f);
+    // start with identity
+    uModel = glm::mat4(1.0f);
 
-        // scale -> rotate -> transform
-        // rightmost matrix acts first which is why the following two lines are in that order
-        uModel = glm::translate(uModel, translationVector);
-        uModel = glm::scale(uModel, scalingVector);
+    // scale -> rotate -> transform
+    // rightmost matrix acts first which is why the following two lines are in that order
+    uModel = glm::translate(uModel, translationVector);
+    uModel = glm::scale(uModel, scalingVector);
 
-        // set model uniform
-        glUniformMatrix4fv(UL_uModel, 1, GL_FALSE, &uModel[0][0]);
+    // set model uniform
+    glUniformMatrix4fv(UL_uModel, 1, GL_FALSE, &uModel[0][0]);
 
-        // using texture unit 0
-        glUniform1i(UL_uTexture, 0);
+    // get animation info from sprite
+    glUniform1i(UL_animated, tex.animated);
+    glUniform1i(UL_frame, tex.currFrame-1);
 
-        // get animation info from sprite
-        glUniform1i(UL_animated, textures.at(key).animated);
-        glUniform1i(UL_frame, textures.at(key).currFrame-1);
+    // get current sprite's dissolve info
+    if(command.d) {
+        glUniform1i(UL_dissolve, command.d->active);
+        glUniform1f(UL_dissolveProgress, command.d->dissolveProgress);
 
-        // get dissolve info
-        glUniform1i(UL_dissolve, spriteList[i].dissolve);
-        glUniform1f(UL_dissolveProgress, spriteList[i].dissolveProgress);
-        glUniform2i(UL_dissolveMaskSize, textures.at("dissolve").w, textures.at("dissolve").h);
+        // get dissolve mask info
+        std::string dissolve_key = command.d->dissolveType;
 
-        // get dissolve burn info
-        glUniform1f(UL_burnBand, burnBand);
-        glUniform3f(UL_burnColor, burnColor.r, burnColor.g, burnColor.b);
-
-        // sends proper width and height (full texture if static, frame if animated) for dissolve
-        int spritePixelWidth = t.animated ? t.frameW : t.w;
-        int spritePixelHeight = t.animated ? t.frameH : t.h;
-        glUniform2i(UL_spriteTextureSize, spritePixelWidth, spritePixelHeight);
-
-        // send ambient color info
-        glUniform3f(UL_ambientColor, ambientColor.r, ambientColor.g, ambientColor.b);
-        glUniform1f(UL_ambientColorIntensity, ambientColorIntensity);
-
-        // using the VAO for vertex attribute state and VBO/EBO bindings
-        glBindVertexArray(VAO);
-
-        // activate the texture unit that the texture wants to bind to
-        glActiveTexture(GL_TEXTURE0);
-
-        // where our texture is :)
-        glBindTexture(GL_TEXTURE_2D, textures.at(key).id);
-
-        // our wonderful draw call
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0); // using 6 vertices, draw 2 triangles from bound EBO, with unsigned int indices, starting at offset 0 in EBO
+        if(textures.find(dissolve_key) == textures.end()) {
+            // TODO: handle texture loading and all that jazz in a TextureManager instead of renderer
+            std::cerr << "WARNING: Dissolve key not loaded! Fallback: Using own texture as dissolve." << std::endl;
+            dissolve_key = key;
+        }
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, textures.at(dissolve_key).id);
+        glUniform2i(UL_dissolveMaskSize, textures.at(dissolve_key).w, textures.at(dissolve_key).h);
     }
+    else {
+        glUniform1i(UL_dissolve, false);
+        glUniform1f(UL_dissolveProgress, 0.0f);
+        glUniform2i(UL_dissolveMaskSize, 0, 0);
+    }
+
+    // using texture unit 0
+    glUniform1i(UL_uTexture, 0);
+
+    // sends proper width and height (full texture if static, frame if animated) for dissolve
+    int spritePixelWidth = tex.animated ? tex.frameW : tex.w;
+    int spritePixelHeight = tex.animated ? tex.frameH : tex.h;
+    glUniform2i(UL_spriteTextureSize, spritePixelWidth, spritePixelHeight);
+
+    // activate the texture unit that the texture wants to bind to
+    glActiveTexture(GL_TEXTURE0);
+
+    // where our texture is :)
+    glBindTexture(GL_TEXTURE_2D, tex.id);
+
+    // our wonderful draw call
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0); // using 6 vertices, draw 2 triangles from bound EBO, with unsigned int indices, starting at offset 0 in EBO
+}
+
+void Renderer::flush() {
+    // sort based on layer, and within a layer, based on z (-1.0 closest to camera, 1.0 furthest from camera)
+    std::sort(drawCommands.begin(), drawCommands.end(), [](const SpriteDrawCommand& a, const SpriteDrawCommand& b) { 
+        if (a.s->layer != b.s->layer) {
+            return a.s->layer < b.s->layer;
+        }
+        return a.t->position.z > b.t->position.z;
+    });
+    for(const auto& command : drawCommands) {
+        drawSprite(command);
+    }
+}
+
+void Renderer::endFrame() {
+    // clear queue draw commands
+    drawCommands.clear();
 }
 
 void Renderer::setAmbientColor(int r, int g, int b) {
@@ -377,36 +415,22 @@ void Renderer::cacheULs() {
     }
 }
 
-void Renderer::addSprites() {
-    // this stuff should live in the engine or ECS or wherever else, not the renderer
-    Sprite sprite = Sprite(632.0f, 344.0f, 0.5f, 1.0f, 1.0f, 1.0f, "knight", false);
-    Sprite sprite2 = Sprite(400.0f, 344.0f, 0.5f, 1.0f, 1.0f, 1.0f, "hunter", false);
-    Sprite sprite3 = Sprite(800.0f, 344.0f, 0.5f, 1.0f, 1.0f, 1.0f, "wizard", false);
-    Sprite sprite4 = Sprite(632.0f, 344.0f, 0.0f, 1.0f, 1.0f, 1.0f, "slash", false);
-    //Sprite background = Sprite(570.0f, 328.0f, 1.0f, 1.0f, 1.0f, 1.0f, "arena_mountain", false);
-    Sprite titleScreen = Sprite(640.0f, 360.0f, 1.0f, 1.0f, 1.0f, 1.0f, "title", false);
-
-    // adding sprites to our spritelist
-    spriteList.push_back(sprite);
-    spriteList.push_back(sprite2);
-    spriteList.push_back(sprite3);
-    spriteList.push_back(sprite4);
-    spriteList.push_back(titleScreen);
-    renderOrderDirty = true;
-}
-
 void Renderer::loadTextures() {
     loadTexture("../assets/knight.png", "knight", GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
     loadTexture("../assets/hunter.png", "hunter", GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
     loadTexture("../assets/wizard.png", "wizard", GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
     loadTexture("../assets/slashanim.png", "slash", GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, 16, 16, 4, true);
-    loadTexture("../assets/dissolve_gradient.png", "dissolve", GL_MIRRORED_REPEAT, GL_CLAMP_TO_EDGE);
+    loadTexture("../assets/dissolve_gradient.png", "dissolve_effect", GL_MIRRORED_REPEAT, GL_CLAMP_TO_EDGE);
+    loadTexture("../assets/slash_gradient.png", "slash_effect", GL_MIRRORED_REPEAT, GL_CLAMP_TO_EDGE);
+    loadTexture("../assets/slash_gradient_fast.png", "slash_effect_fast", GL_MIRRORED_REPEAT, GL_CLAMP_TO_EDGE);
+    loadTexture("../assets/claw_gradient.png", "claw_effect", GL_MIRRORED_REPEAT, GL_CLAMP_TO_EDGE);
+    loadTexture("../assets/column_gradient.png", "column_effect", GL_MIRRORED_REPEAT, GL_CLAMP_TO_EDGE);
     loadTexture("../assets/arena_mountain.png", "arena_mountain", GL_MIRRORED_REPEAT, GL_CLAMP_TO_EDGE);
     loadTexture("../assets/title_screen.png", "title", GL_MIRRORED_REPEAT, GL_CLAMP_TO_EDGE);
     
-    // binding dissolve to texture unit 1
+    // binding default dissolve to texture unit 1
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, textures.at("dissolve").id);
+    glBindTexture(GL_TEXTURE_2D, textures.at("dissolve_effect").id);
 }
 
 void Renderer::buildPipeline() {

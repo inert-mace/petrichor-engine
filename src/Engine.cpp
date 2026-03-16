@@ -5,6 +5,12 @@
 #include <algorithm>
 #include "SDL3/SDL.h"
 #include "glm/geometric.hpp"
+#include "Components/TransformComponent.h"
+#include "Components/VelocityComponent.h"
+#include "Components/AnimationComponent.h"
+#include "Components/SpriteComponent.h"
+#include "Components/DissolveComponent.h"
+#include "Systems/SystemManager.h"
 
 Engine::Engine()
 {
@@ -34,6 +40,13 @@ int Engine::init()
 
     // initialize renderer
     renderer.init(window);
+
+    // initialize registry
+    registry = std::make_unique<entt::registry>();
+    auto testEntity = registry->create();
+    registry->emplace<TransformComponent>(testEntity, glm::vec3(640.0f, 360.0f, 1.0f), glm::vec4(0.0f), glm::vec3(1.0f));
+    registry->emplace<SpriteComponent>(testEntity, SpriteComponent("title", BACKGROUND));
+    registry->emplace<DissolveComponent>(testEntity, DissolveComponent{"column_effect", true, true, 1.0f, 0.6f});
 
     return 0;
 }
@@ -67,10 +80,7 @@ void Engine::simulate(double deltaTime) {
     accumulator += deltaTime;
     while(accumulator >= fixedTimeStep)
     {
-        glm::vec2 direction = inputDirection();
-
-        renderer.spriteList[0].x += testSpeed * direction.x * fixedTimeStep;
-        renderer.spriteList[0].y += testSpeed * direction.y * fixedTimeStep;
+        systems.updateFixed(*registry, renderer, fixedTimeStep);
 
         accumulator -= fixedTimeStep;
     }
@@ -103,16 +113,6 @@ void Engine::run()
                     shouldQuit = true;
                     break;
                 }
-                if(event.key.key == SDLK_SPACE)
-                {
-                    for(auto &sprite : renderer.spriteList) {
-                        if((sprite.textureKey == "title"))
-                        {
-                            sprite.dissolve = !sprite.dissolve;
-                            sprite.dissolveProgress = (reversed) ? 1.0f : 0.0f;
-                        }
-                    }
-                }
             }
         }
         simulate(deltaTime);
@@ -120,19 +120,13 @@ void Engine::run()
         if(shouldQuit) break;
         // render
         audioManager.update();
-        animation(deltaTime, elapsedAnimationTime, 0.1, renderer.textures.at("slash"));
+        //animation(deltaTime, elapsedAnimationTime, 0.1, renderer.textures.at("slash"));
 
-        for(auto &sprite : renderer.spriteList) {
-            if(sprite.dissolve) {
-                sprite.dissolveProgress = (reversed) ? std::clamp(sprite.dissolveProgress + static_cast<float>(-dissolutionRate * deltaTime), 0.0f, 1.0f) : std::clamp(sprite.dissolveProgress + static_cast<float>(dissolutionRate * deltaTime), 0.0f, 1.0f);
-                std::cout << sprite.dissolveProgress << std::endl;
-            }
-        }
+        // renderer.render(); rendering is called by RenderSystem now
+        systems.update(*registry, renderer, deltaTime);
 
-        renderer.render();
         window.swapBuffers();
 
-        // std::cout << "Sprite at (" << renderer.spriteList[0].x << " x, " << renderer.spriteList[0].y << " y)" << std::endl;
         lastFrame = currentFrame;
     }
 }

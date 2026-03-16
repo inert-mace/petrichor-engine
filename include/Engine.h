@@ -3,6 +3,9 @@
 #include "Renderer.h"
 #include "AudioManager.h"
 #include "glm/glm.hpp"
+#include "entt/entt.hpp"
+#include "Systems/SystemManager.h"
+#include <memory>
 
 class Engine
 {
@@ -19,8 +22,10 @@ public:
 
     private:
         Window window;
+        SystemManager systems;
         Renderer renderer;
         AudioManager audioManager;
+        std::unique_ptr<entt::registry> registry;
         const double fixedTimeStep = 0.01667;
         const double maxAccumulatedTime = 0.25;
         double accumulator = 0.0;
